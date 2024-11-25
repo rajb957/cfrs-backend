@@ -1,2 +1,5 @@
 uvicorn
 fastapi
+python-jose
+BeautifulSoup4
+sqlalchemy
