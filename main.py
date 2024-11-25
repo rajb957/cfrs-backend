@@ -7,7 +7,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import requests
-from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import models
 from sqlalchemy.sql import text
