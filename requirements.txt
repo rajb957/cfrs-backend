@@ -4,3 +4,4 @@ python-jose
 BeautifulSoup4
 sqlalchemy
 requests
+python-dotenv
