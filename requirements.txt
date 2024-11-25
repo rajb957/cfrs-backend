@@ -3,4 +3,3 @@ fastapi
 python-jose
 BeautifulSoup4
 sqlalchemy
->>>>>>>>> Temporary merge branch 2
