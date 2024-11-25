@@ -1,5 +1,9 @@
 uvicorn
 fastapi
 python-jose
+<<<<<<< HEAD
 BeautifulSoup4
 sqlalchemy
+=======
+BeautifulSoup4
+>>>>>>> 73a9b4daec8f040017f5b868e02cced3718a3cc5
