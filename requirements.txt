@@ -1,0 +1,3 @@
+pyscopg2-binary
+uvicorn
+fastapi

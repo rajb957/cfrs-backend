@@ -216,3 +216,13 @@ def login(request: Account):
     print(token)
     # return {"access_token": token, "token_type": "bearer", "status_code": 200}
     return JSONResponse(content={"access_token": token, "token_type": "bearer","refresh_token":token}, status_code=200)
+
+@app.post("/auth/signup")
+def refresh(request: Account, db: Session = Depends(get_db)):
+    username = request.username
+    password = request.password
+    print("username", username)
+    print("password", password)
+    db.execute("INSERT INTO account (username, password) VALUES (:username, :password)", {"username": username, "password": password})
+    db.commit()
+    return {"status": "success"}

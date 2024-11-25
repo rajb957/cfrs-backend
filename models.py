@@ -28,14 +28,15 @@ class Blog_Cache(Base):
     __tablename__ = "blog_cache"
     blog_url = Column(String, primary_key=True)
     blog_cache = Column(String)
-# class Ratings(Base):
-#     __tablename__ = "blog_ratings"
-#     # blog_id,userId,ratings
-#     blog_id = Column(Integer, ForeignKey("blog_data.blog_id"))
-#     userid = Column(Integer)
-#     rating = Column(Integer)
-#     # Link it to the Blogs table
-#     owner = relationship("Blogs", back_populates="items")
+
+class Ratings(Base):
+    __tablename__ = "blog_ratings"
+    # blog_id,userId,ratings
+    blog_id = Column(Integer, ForeignKey("blog_data.blog_id"))
+    userid = Column(Integer)
+    rating = Column(Integer)
+    # Link it to the Blogs table
+    owner = relationship("Blogs", back_populates="items")
 
 class User(Base):
     __tablename__ = "users"
@@ -43,6 +44,12 @@ class User(Base):
     uid = Column(Integer, primary_key=True, index = True)
     username = Column(String)
     password = Column(String)
-    is_active = Column(Boolean, default=True)
-    items = relationship("Ratings", back_populates="owner")
+
+class Account_Ratings(Base):
+    __tablename__ = "account_ratings"
+    # user_id,rating
+    user_id = Column(Integer, ForeignKey("users.uid"))
+    rating = Column(Integer)
+    # Link it to the User table
+    owner = relationship("User", back_populates="items")
 
