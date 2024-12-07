@@ -73,7 +73,7 @@ class Page(BaseModel):
 
 @app.get("/", response_class=JSONResponse)
 async def read_item(
-    page:int, db: Session = Depends(get_db)
+    page:int = 1, db: Session = Depends(get_db)
 ):
     print(page)
     # blogs = db.query(models.Blogs).order_by(models.Blogs.rating.desc()).offset((page-1)*10).limit(10).all()
@@ -99,7 +99,6 @@ async def read_item(
         LIMIT 
             10 OFFSET 
             :offset;
-
         """
     blogs = db.execute(text(query), {"offset": (page-1)*10}).fetchall()
     context = convert_to_map(blogs)
