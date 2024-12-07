@@ -1,6 +1,7 @@
 # from typing import Optional
 import time
-from fastapi import FastAPI, Query, Request, Depends, Response
+from fastapi import FastAPI, Query, Request, Depends, Response, Header
+from typing import Annotated 
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 # from fastapi.templating import Jinja2Templates
@@ -67,14 +68,39 @@ def convert_to_map(blogs):
     # print(blog_map)
     return blog_map 
 
+class Page(BaseModel):
+    page: int
+
 @app.get("/", response_class=JSONResponse)
 async def read_item(
-    request: Request, db: Session = Depends(get_db),page: int = 1
+    page:int, db: Session = Depends(get_db)
 ):
-    
+    print(page)
     # blogs = db.query(models.Blogs).order_by(models.Blogs.rating.desc()).offset((page-1)*10).limit(10).all()
     # Write a query to get 10 blogs with author name included
-    query = "SELECT blog_data.blog_id as id, blog_data.blog_title as title, blog_data.blog_content as content, blog_data.author_id as authorid, author_data.author_name as author_name,blog_data.blog_link as blog_link, blog_data.blog_img as blog_img,blog_data.topic as topic FROM blog_data INNER JOIN author_data ON blog_data.author_id = author_data.author_id LIMIT 10 OFFSET :offset"
+    query = """
+        SELECT 
+            blog_data.blog_id AS id, 
+            blog_data.blog_title AS title, 
+            blog_data.blog_content AS content, 
+            blog_data.author_id AS authorid, 
+            author_data.author_name AS author_name, 
+            blog_data.blog_link AS blog_link, 
+            blog_data.blog_img AS blog_img, 
+            blog_data.topic AS topic 
+        FROM 
+            blog_data 
+        INNER JOIN 
+            author_data 
+        ON 
+            blog_data.author_id = author_data.author_id 
+        ORDER BY 
+            blog_data.blog_id 
+        LIMIT 
+            10 OFFSET 
+            :offset;
+
+        """
     blogs = db.execute(text(query), {"offset": (page-1)*10}).fetchall()
     context = convert_to_map(blogs)
     # print(context)
@@ -176,7 +202,9 @@ def ids_of_all_blogs(request: Request, db: Session = Depends(get_db)):
         print(f"Database error: {e}")
         return JSONResponse({"error": "Database error"}, status_code=500)
 
-
+@app.get("/signup", response_class=JSONResponse)
+def signup(request: Request, db: Session = Depends(get_db)):
+    return {"status": "success"}
 
 
 SECRET_KEY = "your_secret_key"
@@ -201,14 +229,21 @@ class Account(BaseModel):
     username : str
     password : str
 
+def check_credentials(username, password,db):
+    query = "SELECT * FROM account WHERE email = :username AND password = :password"
+    account = db.execute(text(query), {"username": username, "password": password}).fetchone()
+    if account:
+        return True
+    return False
+
 
 @app.post("/auth/login")
-def login(request: Account):
+def login(request: Account, db: Session = Depends(get_db)):
     username = request.username
     password = request.password
     print("username", username)
     print("password", password)
-    if username != "rajbunsha@gmail.com" or password != "raJ@123456789":
+    if check_credentials(username, password,db) == False:
         raise HTTPException(status_code=400, detail="Invalid credentials")
     token = create_access_token({"sub": username})
     refresh_token = create_access_token({"sub": username})
@@ -216,12 +251,67 @@ def login(request: Account):
     # return {"access_token": token, "token_type": "bearer", "status_code": 200}
     return JSONResponse(content={"access_token": token, "token_type": "bearer","refresh_token":token}, status_code=200)
 
+class Account_signup(BaseModel):
+    email : str
+    username : str
+    password : str
+
 @app.post("/auth/signup")
-def refresh(request: Account, db: Session = Depends(get_db)):
+def refresh(request: Account_signup, db: Session = Depends(get_db)):
+    email = request.email
     username = request.username
     password = request.password
     print("username", username)
     print("password", password)
-    db.execute("INSERT INTO account (username, password) VALUES (:username, :password)", {"username": username, "password": password})
+    # check if account table exists
+    # if not, create the table
+    account_table_exists = db.execute(
+        text("SELECT to_regclass('account')")).fetchone()
+    if not account_table_exists[0]:
+        print("Creating account table")
+        account_table = """
+        CREATE TABLE IF NOT EXISTS account (
+            id SERIAL PRIMARY KEY,
+            email TEXT,
+            username TEXT,
+            password TEXT
+        )
+        """
+        db.execute(text(account_table))
+        db.commit()
+    else:
+        print("Table already exists") 
+    db.execute(text("INSERT INTO account (email, username, password) VALUES (:email, :username, :password)"), {"username": username, "password": password, "email": email})
     db.commit()
+    return {"status": "success"}
+
+class Bookmark(BaseModel):
+    id : int
+
+@app.post("/bookmark")
+def bookmark(headers: Annotated[str | None, Header()],bookmark:Bookmark, db: Session = Depends(get_db)):
+    print(bookmark.id)
+    print(headers)
+
+    bookmark_table_exists = db.execute(
+        text("SELECT to_regclass('bookmark')")).fetchone()
+    if not bookmark_table_exists[0]:
+        print("Creating bookmark table")
+        bookmark_table = """
+        CREATE TABLE IF NOT EXISTS bookmark (
+            id SERIAL PRIMARY KEY,
+            email TEXT,
+            blog_id INT
+        )
+        """
+        db.execute(text(bookmark_table))
+        db.commit()
+    else:
+        print("Table already exists")
+    if(db.execute(text("SELECT * FROM bookmark WHERE blog_id = :blog_id and email = :email"), {"blog_id": bookmark.id,"email": bookmark.email}).fetchone()):
+        # remove the bookmark
+        db.execute(text("DELETE FROM bookmark WHERE blog_id = :blog_id"), {"blog_id": bookmark.id})
+        return {"status": "bookmark removed"}
+    else:
+        db.execute(text("INSERT INTO bookmark (blog_id) VALUES (:blog_id)"), {"blog_id": bookmark.id})
     return {"status": "success"}

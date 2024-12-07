@@ -1,3 +1,4 @@
 # Gitignore for python
 
 __pycache__/
+.env

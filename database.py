@@ -7,6 +7,8 @@ load_dotenv()
 
 # SQLALCHEMY_DATABASE_URL = "postgresql+psycopg2://postgres:NnsjgtirQLoVxhqOyEGkDBpoAxKDZGgL@autorack.proxy.rlwy.net:29627/railway"
 SQLALCHEMY_DATABASE_URL = os.environ.get('DATABASE_URL')
+SQLALCHEMY_DATABASE_URL = SQLALCHEMY_DATABASE_URL.replace("postgres://", "postgresql+psycopg2://", 1)
+
 # Create a connection to the database
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
