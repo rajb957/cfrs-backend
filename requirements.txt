@@ -6,3 +6,4 @@ sqlalchemy
 requests
 python-dotenv
 psycopg2-binary
+python-json-logger

@@ -17,6 +17,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from database import engine, SessionLocal
 import logging
+from pythonjsonlogger import jsonlogger
 
 # Configure logging
 logger = logging.getLogger("uvicorn")
@@ -27,8 +28,13 @@ file_handler = logging.FileHandler("application.log")
 file_handler.setLevel(logging.INFO)
 
 # Formatter for log messages
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-file_handler.setFormatter(formatter)
+
+# JSON formatter for logs
+json_formatter = jsonlogger.JsonFormatter(
+    "%(asctime)s %(name)s %(levelname)s %(message)s"
+)
+
+file_handler.setFormatter(json_formatter)
 
 # Add the file handler to the root logger
 logger.addHandler(file_handler)
