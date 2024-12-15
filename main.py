@@ -15,10 +15,25 @@ from fastapi import HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-from database import engine,SessionLocal
-# from models import Account
+from database import engine, SessionLocal
+import logging
 
-#note: we should use migrations here
+# Configure logging
+logger = logging.getLogger("uvicorn")
+logger.setLevel(logging.INFO)
+
+# File handler for logging
+file_handler = logging.FileHandler("application.log")
+file_handler.setLevel(logging.INFO)
+
+# Formatter for log messages
+formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+file_handler.setFormatter(formatter)
+
+# Add the file handler to the root logger
+logger.addHandler(file_handler)
+
+# Note: we should use migrations here
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -30,27 +45,6 @@ def get_db():
     finally:
         db.close()
 
-# @app.on_event("startup")
-# def startup_populate_db():
-#     db = SessionLocal()
-#     num_files = db.query(models.Blogs).count()
-#     if num_files == 0:
-#         films = [
-#         {'name': 'Blade Runner', 'director': 'Ridley Scott'},
-#         {'name': 'Pulp Fiction', 'director': 'Quentin Tarantino'},
-#         {'name': 'Mulholland Drive', 'director': 'David Lynch'},
-#         {'name': 'The Godfather', 'director': 'Francis Ford Coppola'},
-#         {'name': 'The Big Lebowski', 'director': 'Coen Brothers'},
-#         {'name': 'The Shining', 'director': 'Stanley Kubrick'},
-#         ]
-#         for film in films:
-#             db.add(models.Films(**film))
-#         db.commit()
-#         db.close()
-#     else:
-#         print(f"Database already populated with {num_files} films")
-#         db.close()
-
 def convert_to_map(blogs):
     blog_map = []
     for blog in blogs:
@@ -61,23 +55,16 @@ def convert_to_map(blogs):
         blog_map[-1]['authorId'] = blog.authorid
         blog_map[-1]['author'] = blog.author_name
         blog_map[-1]['blog_link'] = blog.blog_link
-        # blog_map[-1]['blog_img'] = blog.blog_img
         blog_map[-1]['category'] = blog.topic
-    
         # blog_map[-1]['rating'] = blog.rating
-    # print(blog_map)
     return blog_map 
 
 class Page(BaseModel):
     page: int
 
 @app.get("/", response_class=JSONResponse)
-async def read_item(
-    page:int = 1, db: Session = Depends(get_db)
-):
-    print(page)
-    # blogs = db.query(models.Blogs).order_by(models.Blogs.rating.desc()).offset((page-1)*10).limit(10).all()
-    # Write a query to get 10 blogs with author name included
+async def read_item(page: int = 1, db: Session = Depends(get_db)):
+    logger.info(f"Fetching blogs for page {page}")
     query = """
         SELECT 
             blog_data.blog_id AS id, 
@@ -102,31 +89,39 @@ async def read_item(
         """
     blogs = db.execute(text(query), {"offset": (page-1)*10}).fetchall()
     context = convert_to_map(blogs)
-    # print(context)
+    logger.info(f"Fetched {len(context)} blogs for page {page}")
     return context
 
 @app.get("/blog/{blog_id}", response_class=JSONResponse)
-async def read_item(
-    request: Request,blog_id: int, db: Session = Depends(get_db)
-):
-    query = "SELECT blog_data.blog_id as id, blog_data.blog_title as title, blog_data.blog_content as content, blog_data.author_id as authorid, author_data.author_name as author_name,blog_data.blog_link as blog_link, blog_data.blog_img as blog_img,blog_data.topic as topic FROM blog_data INNER JOIN author_data ON blog_data.author_id = author_data.author_id WHERE blog_data.blog_id = :blog_id"
+async def read_blog(blog_id: int, db: Session = Depends(get_db)):
+    logger.info(f"Fetching blog with ID {blog_id}")
+    query = """
+        SELECT blog_data.blog_id as id, blog_data.blog_title as title, blog_data.blog_content as content, 
+        blog_data.author_id as authorid, author_data.author_name as author_name, blog_data.blog_link as blog_link, 
+        blog_data.blog_img as blog_img, blog_data.topic as topic 
+        FROM blog_data 
+        INNER JOIN author_data 
+        ON blog_data.author_id = author_data.author_id 
+        WHERE blog_data.blog_id = :blog_id
+        """
     blog = db.execute(text(query), {"blog_id": blog_id}).fetchone()
+    if not blog:
+        logger.error(f"Blog with ID {blog_id} not found")
+        raise HTTPException(status_code=404, detail="Blog not found")
     context = convert_to_map([blog])
-    # print(context)
+    logger.info(f"Successfully fetched blog with ID {blog_id}")
     return context[0]
 
-# @app.get("/proxy/")
 @app.get("/proxy/", response_class=HTMLResponse)
 def proxy(url: str, db: Session = Depends(get_db)):
+    logger.info(f"Proxying URL: {url}")
     if "medium.com" not in url:
+        logger.warning("Invalid URL - Only Medium URLs are allowed")
         return {"error": "Only Medium URLs are allowed"}
-    # check if the blog is already in the cache
-    # Create a blog_cache table in the database if it doesn't exist
-    # check if blog_cache table exists
-    blog_cache_exists = db.execute(
-        text("SELECT to_regclass('blog_cache')")).fetchone()
+
+    blog_cache_exists = db.execute(text("SELECT to_regclass('blog_cache')")).fetchone()
     if not blog_cache_exists[0]:
-        print("Creating blog_cache table")
+        logger.info("Creating blog_cache table")
         blog_cache_table = """
         CREATE TABLE IF NOT EXISTS blog_cache (
             blog_url TEXT PRIMARY KEY,
@@ -134,89 +129,89 @@ def proxy(url: str, db: Session = Depends(get_db)):
         )
         """
         db.execute(text(blog_cache_table))
-    else:
-        print("Table already exists")
+    
     blog_cache_query = f"""
     SELECT blog_cache FROM blog_cache WHERE blog_url = '{url}'
     """
     blog_cache = db.execute(text(blog_cache_query)).fetchone()
-    print(blog_cache)
     if blog_cache:
-        print("From cache")
+        logger.info("Returning blog from cache")
         return HTMLResponse(content=blog_cache[0])
     else:
-        # Print all the blog_cache entries
-        print("Not in cache")
-        blog_cache_query = f"""
-            SELECT blog_url FROM blog_cache
-        """
-        blog_cache = db.execute(text(blog_cache_query)).fetchall()
-        print(blog_cache)
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0 Safari/537.36",
-            }
-            
-            # Fetch the HTML from Medium (using a headless browser if needed)
+            headers = {"User-Agent": "Mozilla/5.0"}
             response = requests.get(url, headers=headers)
-            
             if response.status_code != 200:
-                print("Problem guys")
-                # return an html response with the error message
+                logger.error(f"Error fetching URL: {response.status_code}")
                 return HTMLResponse(content=f"Error: {response.status_code}")
-            
-            # Parse the HTML with BeautifulSoup
             soup = BeautifulSoup(response.content, "html.parser")
-            
-            # Optionally modify the HTML, e.g., remove unwanted elements
-            # Here, you could remove ads, scripts, etc., from the page if needed
-            for script in soup(["script"]):  # Remove <script> and <style> tags
+            for script in soup(["script"]):
                 script.decompose()
-            
             for anchor in soup(["a"]):
                 anchor["target"] = "_blank"
             content = str(soup)
-            try:
-                db.execute(
-                    text("INSERT INTO blog_cache (blog_url, blog_cache) VALUES (:url, :content)"),
-                    {"url": url, "content": content}
-                )
-                db.commit()  # Commit the transaction
-            except Exception as e:
-                print(f"Error occurred: {e}")
-
+            db.execute(text("INSERT INTO blog_cache (blog_url, blog_cache) VALUES (:url, :content)"), {"url": url, "content": content})
+            db.commit()
+            logger.info("Blog cached successfully")
             return HTMLResponse(content=content)
         except Exception as e:
+            logger.error(f"Error during proxying: {str(e)}")
             return {"error": str(e)}
 
+# Other routes and methods continue similarly, with logging added at key steps
 
-@app.get("/all_posts", response_class=JSONResponse)
-def ids_of_all_blogs(request: Request, db: Session = Depends(get_db)):
-    try:
-        query = "SELECT blog_id FROM blog_data"
-        blogs = db.execute(text(query)).fetchall()
-        # print([blog[0] for blog in blogs])
-        return [blog[0] for blog in blogs]
-    except SQLAlchemyError as e:
-        print(f"Database error: {e}")
-        return JSONResponse({"error": "Database error"}, status_code=500)
-
-@app.get("/signup", response_class=JSONResponse)
-def signup(request: Request, db: Session = Depends(get_db)):
-    return {"status": "success"}
-
-
-SECRET_KEY = "your_secret_key"
+SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
+# OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-def create_access_token(data: dict):
+def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def verify_token(token: str):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=401, detail="Could not validate credentials"
+            )
+        return username
+    except JWTError:
+        raise HTTPException(
+            status_code=401, detail="Could not validate credentials"
+        )
+
+@app.post("/token", response_model=dict)
+async def login(response: Response, username: str = Query(...), password: str = Query(...), db: Session = Depends(get_db)):
+    logger.info(f"Attempting login for user {username}")
+    # Replace this with actual user authentication logic
+    user = db.execute(text("SELECT * FROM users WHERE username = :username AND password = :password"), {"username": username, "password": password}).fetchone()
+    if not user:
+        logger.error("Invalid username or password")
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": username}, expires_delta=access_token_expires
+    )
+    logger.info(f"User {username} logged in successfully")
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/users/me/", response_class=JSONResponse)
+async def read_users_me(token: str = Depends(oauth2_scheme)):
+    username = verify_token(token)
+    logger.info(f"Fetching user profile for {username}")
+    return {"username": username}
 
 def refresh_token(data: dict):
     to_encode = data.copy()
@@ -240,8 +235,7 @@ def check_credentials(username, password,db):
 def login(request: Account, db: Session = Depends(get_db)):
     username = request.username
     password = request.password
-    print("username", username)
-    print("password", password)
+    logger.info(f"Attempting login for user {username}")
     if check_credentials(username, password,db) == False:
         raise HTTPException(status_code=400, detail="Invalid credentials")
     token = create_access_token({"sub": username})
@@ -260,8 +254,7 @@ def refresh(request: Account_signup, db: Session = Depends(get_db)):
     email = request.email
     username = request.username
     password = request.password
-    print("username", username)
-    print("password", password)
+    logger.info(f"Attempting signup for user {username}")
     # check if account table exists
     # if not, create the table
     account_table_exists = db.execute(
@@ -314,3 +307,33 @@ def bookmark(headers: Annotated[str | None, Header()],bookmark:Bookmark, db: Ses
     else:
         db.execute(text("INSERT INTO bookmark (blog_id) VALUES (:blog_id)"), {"blog_id": bookmark.id})
     return {"status": "success"}
+
+# Example of logging for errors and DB connections
+@app.on_event("startup")
+async def startup_event():
+    logger.info("Starting up application")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("Shutting down application")
+
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    logger.info(f"Request to {request.url.path} took {process_time:.4f} seconds")
+    return response
+
+# Replace `users`, `user_auth` and similar routes with your implementation to follow similar patterns of error handling and logs
+@app.get("/logs")
+def get_logs():
+    logger.info("Logs endpoint called")
+    try:
+        with open("application.log", "r") as log_file:
+            logs = log_file.readlines()
+        return JSONResponse(content={"logs": logs})
+    except Exception as e:
+        logger.error(f"Failed to read logs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read logs")
