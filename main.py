@@ -24,7 +24,7 @@ logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
 
 # File handler for logging
-file_handler = logging.FileHandler("application.log")
+file_handler = logging.FileHandler("/var/log/app/application.log")
 file_handler.setLevel(logging.INFO)
 
 # Formatter for log messages
